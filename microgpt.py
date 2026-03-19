@@ -33,8 +33,11 @@ class Value :
         self._children = children 
         self._local_grad = _local_grads
 
-v = Value(5)
-print(v.data)
+    def __add__(self, other):
+        other = other if isinstance (other, value) else Value(other)
+        return Value (self.data + self.other (self, other), (1,1))
+
+
 
 
 
