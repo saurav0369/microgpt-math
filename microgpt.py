@@ -62,3 +62,41 @@ class Value :
     print(__truediv)
     print (__pow__)
     print (__add__)
+
+
+    def backward(self):
+        topo =[]
+        visited = set()
+
+        def build_topo(v):
+            if v not in visited:
+                visited.add(v)
+
+                for child in v._children:
+                    build_topo(child)
+                topo.append(v)
+
+        build_topo (self)
+        self.grad = 1 
+        for v in reversed (topo):
+            for child, _local_grads in zip (v._children, v._local_grads):
+                child.grad += _local_grads * v.grad 
+
+
+# paramters 
+n_layer = 1 
+n_embd = 16
+block_size = 16 
+n_head = 4 
+head_dim = n_embd//n_head
+
+print(f"num of head dimensions {head_dim}")
+
+
+def matrix(nout, nin, std =0.08 ):
+    return [[Value (random.gauss(0, std)) for _ in range(nin)] for _ in range(nout)]
+
+state_dict ={ 'wte': matrix(vocab_size, n_embd), 'wpe': matrix(block_size, n_embd),
+'lm_head': matrix(vocab_size, n_embd)}
+
+print(state_dict)
