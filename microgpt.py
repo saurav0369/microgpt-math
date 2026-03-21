@@ -9,6 +9,8 @@ if not os.path.exists('input.txt'):
     names_url = 'https://raw.githubusercontent.com/karpathy/makemore/988aa59/names.txt'
     urllib.request.urlretrieve (names_url, 'input.txt')
 
+    print(names_url)
+
 docs = [line.strip() for line in open ('input.txt') if line.strip()]
 random.shuffle(docs)
 print(f"num docs : {len(docs)}")
