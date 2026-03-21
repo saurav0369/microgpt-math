@@ -1,5 +1,7 @@
-for i in range(1000, ):
+w = [
+    [0,5,5],
+    [8,4,3]
+]
 
-    print ("saurav"  + "sharma")
-
-print(i)
+for wo in w:
+    print(w)

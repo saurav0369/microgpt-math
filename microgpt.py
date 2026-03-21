@@ -9,7 +9,6 @@ if not os.path.exists('input.txt'):
     names_url = 'https://raw.githubusercontent.com/karpathy/makemore/988aa59/names.txt'
     urllib.request.urlretrieve (names_url, 'input.txt')
 
-    print(names_url)
 
 docs = [line.strip() for line in open ('input.txt') if line.strip()]
 random.shuffle(docs)
@@ -120,5 +119,14 @@ for mat in state_dict.values():
 
 print (f'params numbers{len(params)}')            
 
-        
+#linear 
+def linear (x,w):
+    return [sum(wi*xi for wi,xi in zip(wo,x)) for wo in x ]
 
+#softmax 
+
+def softmax(logits):
+    max_value = max(val.data for val in logits)
+    exps = [(val - max_value).exp() for val in logits]
+    total = sum(exps)
+    return [e / total for e in exps]
