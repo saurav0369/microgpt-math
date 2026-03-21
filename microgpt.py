@@ -86,7 +86,7 @@ class Value :
 # paramters 
 n_layer = 1 
 n_embd = 16
-block_size = 16 
+block_size = 16
 n_head = 4 
 head_dim = n_embd//n_head
 
@@ -99,4 +99,24 @@ def matrix(nout, nin, std =0.08 ):
 state_dict ={ 'wte': matrix(vocab_size, n_embd), 'wpe': matrix(block_size, n_embd),
 'lm_head': matrix(vocab_size, n_embd)}
 
-print(state_dict)
+for i in range (n_layer):
+    state_dict[f'layer{i}.attn_wq'] = matrix (n_embd, n_embd)
+    state_dict[f'layer{i}.attn.wk'] = matrix (n_embd, n_embd)
+    state_dict[f'layer{i}.attn.wv'] = matrix (n_embd, n_head)
+    state_dict[f'layer{i}.attn.wo'] = matrix (n_embd, n_embd)
+
+    state_dict[f'layer{i}.mlp_fc1'] = matrix(4 * n_embd, n_embd)
+    state_dict[f'layer{i}.mlp_fc2'] = matrix (n_embd, 4 * n_embd)
+
+params = []
+
+for mat in state_dict.values():
+    for row in mat :
+        for p in row :
+
+            params.append(p)
+
+print (f'params numbers{len(params)}')            
+
+        
+
