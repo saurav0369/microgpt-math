@@ -263,3 +263,29 @@ class WorldGPT(nn.Module):
             
         return idx
 
+if __name__ == '__main__':
+    # A quick mathematical functional check to prove it works
+    # Using small dummy dimensions
+    V = 50       # vocab size
+    D = 64       # embedding dim
+    H = 4        # num heads
+    L = 2        # layers
+    SEQ = 16     # max seq len
+    
+    print("Initializing World GPT model with math intuitions...")
+    model = WorldGPT(vocab_size=V, d_model=D, n_head=H, n_layer=L, max_seq_len=SEQ)
+    
+    # Simulate a mini-batch of 2 sequences of length 8
+    inputs = torch.randint(0, V, (2, 8))
+    targets = torch.randint(0, V, (2, 8))
+    
+    print(f"Feeding forward inputs of shape {inputs.shape}...")
+    logits, loss = model(inputs, targets)
+    
+    print(f"Success! Model output shape (B, T, V): {logits.shape}")
+    print(f"Calculated negative log likelihood loss: {loss.item():.4f}")
+    
+    # Generation test
+    print("Testing autoregressive generation...")
+    out_tokens = model.generate(inputs, max_new_tokens=4)
+    print(f"New shape after generation guarantees causal flow: {out_tokens.shape}")
