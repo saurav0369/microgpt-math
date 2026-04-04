@@ -94,3 +94,60 @@ class CausalSelfAttention(nn.Module):
         return y
 
 
+class FeedForward(nn.Module):
+    """
+    If Attention is the "communication" phase between tokens, the FeedForward network 
+    is the "computation" or "reflection" phase for each token individually.
+    
+    Mathematically, it is an MLP (Multi-Layer Perceptron) applied to every token independently.
+    It expands the dimensionality (typically by a factor of 4) to give the model lots of 
+    parameters to store learned patterns and facts, then projects back down.
+    """
+    def __init__(self, d_model):
+        super().__init__()
+        self.c_fc   = nn.Linear(d_model, 4 * d_model)
+        # Gaussian Error Linear Unit (GELU)
+        # Unlike ReLU which is a strict max(0, x), GELU is mathematically smoothed.
+        # It weights x by the cumulative distribution function of the Gaussian distribution: x * Phi(x)
+        # This provides a smoother gradient landscape than ReLU's sharp corner at 0.
+        self.act    = nn.GELU()
+        self.c_proj = nn.Linear(4 * d_model, d_model)
+
+    def forward(self, x):
+        return self.c_proj(self.act(self.c_fc(x)))
+
+
+class Block(nn.Module):
+    """
+    A Transformer block chains together Attention (communication) and FeedForward (computation).
+    """
+    def __init__(self, d_model, n_head, max_seq_len):
+        super().__init__()
+        self.ln_1 = nn.LayerNorm(d_model)
+        self.attn = CausalSelfAttention(d_model, n_head, max_seq_len)
+        self.ln_2 = nn.LayerNorm(d_model)
+        self.mlp = FeedForward(d_model)
+
+    def forward(self, x):
+        # RESIDUAL CONNECTIONS (the + operator)
+        # Mathematically, we compute: x = x + Layer(x)
+        # 
+        # Why? Imagine a deep network. By the chain rule, a gradient flowing backwards 
+        # is a series of multiplications. Multiplying many small numbers leads to vanishing gradients.
+        # The + operator in calculus acts as an "addition router" for gradients:
+        # d(x + f(x))/dx = 1 + f'(x)
+        # This explicit "1" means the gradient flows backwards through the network uncorrupted, 
+        # acting like a superhighway for gradients directly from the loss function to the earliest layers.
+        
+        # PRE-NORMALIZATION (LayerNorm before the layer)
+        # Layer Normalization stabilizes the hidden state dynamics. 
+        # Math: We calculate the mean and variance across the embedding dimension (C).
+        # We subtract the mean and divide by standard deviation: (x - u) / (std).
+        # This forces the features to have roughly zero mean and unit variance.
+        # It ensures that massive activations in one channel don't completely drown out the others,
+        # which keeps the gradient flow remarkably stable.
+        x = x + self.attn(self.ln_1(x))
+        x = x + self.mlp(self.ln_2(x))
+        return x
+
+
