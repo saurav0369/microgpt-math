@@ -151,3 +151,115 @@ class Block(nn.Module):
         return x
 
 
+class WorldGPT(nn.Module):
+    """
+    The full World GPT model.
+    It links token IDs to continuous vectors, passes them through physical blocks of geometry 
+    (the blocks), and maps them back into a vocabulary probability space.
+    """
+    def __init__(self, vocab_size, d_model=768, n_layer=12, n_head=12, max_seq_len=1024):
+        super().__init__()
+        self.max_seq_len = max_seq_len
+        self.d_model = d_model
+        
+        # 1. Embedding Layer
+        # Discrete symbols (like word ID 452) cannot be differentiated. 
+        # We look up a learnable continuous vector for every discrete word token.
+        self.wte = nn.Embedding(vocab_size, d_model)
+        
+        # 2. Positional Encoding
+        # Attention is functionally a set-operation, meaning it has no concept of order. 
+        # Q @ K^T yields the same result no matter where the tokens sit in the sequence.
+        # Thus, we give each physical position its own learnable vector, and ADd it 
+        # to the token's vector. Now, the vector contains both "What" it is and "Where" it is.
+        self.wpe = nn.Embedding(max_seq_len, d_model)
+        
+        self.blocks = nn.Sequential(*[Block(d_model, n_head, max_seq_len) for _ in range(n_layer)])
+        self.ln_f = nn.LayerNorm(d_model)
+        
+        # 3. The Language Model Head
+        # Projects the final d_model dimensional vector back to vocab_size dimensions
+        # to predict the next word.
+        self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
+        
+        # Weight Tying: 
+        # Conceptually, the transformation to project a token into a vector space (self.wte)
+        # is the exact inverse geometry needed to take a meaning vector and pick a word (self.lm_head).
+        # Tying them saves enormous amounts of memory and improves learning.
+        self.wte.weight = self.lm_head.weight 
+
+        # Initialize weights mathematically
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            # Normal distribution with standard deviation 0.02
+            # 0.02 comes from ~ 1/sqrt(d_model) for wide networks, ensuring unit variance 
+            # flows through the network initially.
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+    def forward(self, idx, targets=None):
+        B, T = idx.size()
+        assert T <= self.max_seq_len, f"Sequence length {T} exceeds max {self.max_seq_len}"
+        
+        pos = torch.arange(0, T, dtype=torch.long, device=idx.device) # (T)
+        
+        # Add discrete structural vectors (What + Where)
+        tok_emb = self.wte(idx) # (B, T, C)
+        pos_emb = self.wpe(pos) # (T, C)
+        x = tok_emb + pos_emb   # Broadcasting applies pos_emb to every item in the Batch
+        
+        # Flow through transformer blocks
+        x = self.blocks(x)
+        x = self.ln_f(x)
+        
+        # Get raw, un-normalized predictions (logits)
+        logits = self.lm_head(x) # (B, T, vocab_size)
+        
+        loss = None
+        if targets is not None:
+            # CROSS ENTROPY LOSS / NEGATIVE LOG LIKELIHOOD 
+            # Let's say the correct target word has an index of `k`.
+            # We want the probability of `k` to be exactly 1.0, and 0 for everything else.
+            # 
+            # How do we measure distance between our predicted probability distribution and reality?
+            # We use Cross Entropy.
+            # 
+            # Math: Loss = -log(P(target))
+            # If the model assigns P(target) = 1.0, then -log(1.0) = 0. (Perfect score).
+            # If the model assigns P(target) = 0.001, then -log(0.001) is a large positive number.
+            # The gradient naturally tells the weights how to shift the geometric space so that
+            # the logits for the correct target index are higher than the rest.
+            B, T, C = logits.shape
+            logits_reshaped = logits.view(B * T, C)
+            targets_reshaped = targets.view(B * T)
+            loss = F.cross_entropy(logits_reshaped, targets_reshaped)
+            
+        return logits, loss
+
+    @torch.no_grad()
+    def generate(self, idx, max_new_tokens):
+        """
+        Generation loop. Autoregressive inference.
+        Take sequence -> output prediction -> append to sequence -> repeat.
+        """
+        for _ in range(max_new_tokens):
+            # Condense context if it gets too long
+            idx_cond = idx[:, -self.max_seq_len:]
+            # Provide current sequence to get predictions
+            logits, _ = self(idx_cond)
+            # We only care about the very last token's prediction in the Time dimension
+            logits = logits[:, -1, :] # (B, vocab_size)
+            # Exponentiate and normalize logits to get legitimate probabilities
+            probs = F.softmax(logits, dim=-1)
+            # Sample from the probability distribution
+            idx_next = torch.multinomial(probs, num_samples=1) # (B, 1)
+            # Append generated token to the running sequence
+            idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
+            
+        return idx
+
